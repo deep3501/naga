@@ -1,0 +1,843 @@
+t# 1_dnn_xor.py
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+
+# XOR input and output
+X = np.array([[0,0],[0,1],[1,0],[1,1]], dtype=float)
+y = np.array([[0],[1],[1],[0]], dtype=float)
+
+# Define model
+model = Sequential([
+    Dense(8, input_dim=2, activation='relu'),
+    Dense(4, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+
+# Compile and train
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model.fit(X, y, epochs=500, verbose=0)
+
+# Test
+pred = model.predict(X)
+print("Predictions:\n", np.round(pred, 2))
+
+
+
+
+# 3_cnn_mnist.py
+import tensorflow as tf
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+
+# Load and preprocess
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+x_train = x_train.reshape(-1, 28, 28, 1).astype("float32") / 255
+x_test = x_test.reshape(-1, 28, 28, 1).astype("float32") / 255
+y_train = to_categorical(y_train)
+y_test = to_categorical(y_test)
+
+# Build CNN
+model = Sequential([
+    Conv2D(32, (3,3), activation='relu', input_shape=(28,28,1)),
+    MaxPooling2D((2,2)),
+    Conv2D(64, (3,3), activation='relu'),
+    MaxPooling2D((2,2)),
+    Flatten(),
+    Dense(128, activation='relu'),
+    Dropout(0.5),
+    Dense(10, activation='softmax')
+])
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+model.fit(x_train, y_train, epochs=3, batch_size=128, validation_split=0.1)
+
+loss, acc = model.evaluate(x_test, y_test)
+print(f"Test Accuracy: {acc:.4f}")
+
+
+
+
+# 4_cnn_emnist.py
+import tensorflow as tf
+import tensorflow_datasets as tfds
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+
+# Load EMNIST Letters dataset
+data = tfds.load("emnist/letters", split=["train", "test"], as_supervised=True)
+train_data, test_data = data[0], data[1]
+
+# Normalize and batch
+def preprocess(img, label):
+    img = tf.cast(img, tf.float32) / 255.0
+    img = tf.expand_dims(img, -1)
+    return img, label - 1  # labels are 1–26
+
+train_data = train_data.map(preprocess).batch(128).shuffle(10000)
+test_data = test_data.map(preprocess).batch(128)
+
+# CNN model
+model = Sequential([
+    Conv2D(32, (3,3), activation='relu', input_shape=(28,28,1)),
+    MaxPooling2D((2,2)),
+    Conv2D(64, (3,3), activation='relu'),
+    Flatten(),
+    Dense(128, activation='relu'),
+    Dropout(0.4),
+    Dense(26, activation='softmax')
+])
+
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.fit(train_data, epochs=3, validation_data=test_data)
+
+
+
+
+# 5_cnn_lfw.py
+import tensorflow as tf
+from tensorflow.keras import layers, models
+import tensorflow_datasets as tfds
+
+# Load Labeled Faces in the Wild (LFW)
+data, info = tfds.load("lfw", split=["train"], with_info=True, as_supervised=True)
+train_data = data[0]
+
+# Preprocess images
+def preprocess(image, label):
+    image = tf.image.resize(image, (64, 64))
+    image = tf.cast(image, tf.float32) / 255.0
+    return image, label
+
+train_data = train_data.map(preprocess).batch(64).shuffle(1000)
+
+# Basic CNN
+model = models.Sequential([
+    layers.Conv2D(32, (3,3), activation='relu', input_shape=(64,64,3)),
+    layers.MaxPooling2D(2,2),
+    layers.Conv2D(64, (3,3), activation='relu'),
+    layers.MaxPooling2D(2,2),
+    layers.Flatten(),
+    layers.Dense(128, activation='relu'),
+    layers.Dense(info.features['label'].num_classes, activation='softmax')
+])
+
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.fit(train_data, epochs=3)
+
+
+
+
+
+# 6_cnn_face_custom.py
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras import layers, models
+
+# Path: assume dataset folder like
+# dataset/
+#    train/
+#       person1/
+#       person2/
+#    test/
+#       person1/
+#       person2/
+
+train_dir = "dataset/train"
+test_dir = "dataset/test"
+
+# Image data generators
+train_gen = ImageDataGenerator(rescale=1./255)
+test_gen = ImageDataGenerator(rescale=1./255)
+
+train_data = train_gen.flow_from_directory(train_dir, target_size=(64, 64),
+                                           batch_size=32, class_mode='categorical')
+test_data = test_gen.flow_from_directory(test_dir, target_size=(64, 64),
+                                         batch_size=32, class_mode='categorical')
+
+# CNN model
+model = models.Sequential([
+    layers.Conv2D(32, (3,3), activation='relu', input_shape=(64,64,3)),
+    layers.MaxPooling2D(2,2),
+    layers.Conv2D(64, (3,3), activation='relu'),
+    layers.MaxPooling2D(2,2),
+    layers.Flatten(),
+    layers.Dense(128, activation='relu'),
+    layers.Dropout(0.4),
+    layers.Dense(train_data.num_classes, activation='softmax')
+])
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+model.fit(train_data, validation_data=test_data, epochs=5)
+
+
+
+
+# 7_transfer_vgg16_emnist.py
+import tensorflow as tf
+import tensorflow_datasets as tfds
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras import layers, models
+
+# Load EMNIST (letters)
+train_ds, test_ds = tfds.load('emnist/letters', split=['train', 'test'], as_supervised=True)
+
+# Preprocess: resize to VGG16 input (224x224x3)
+def preprocess(img, label):
+    img = tf.image.resize(img, (224, 224))
+    img = tf.image.grayscale_to_rgb(img)  # make 3 channels
+    img = tf.cast(img, tf.float32) / 255.0
+    return img, label - 1  # labels are 1–26
+
+train_ds = train_ds.map(preprocess).batch(64).shuffle(1000)
+test_ds = test_ds.map(preprocess).batch(64)
+
+# Load pretrained VGG16 (no top)
+base_model = VGG16(weights='imagenet', include_top=False, input_shape=(224,224,3))
+base_model.trainable = False  # freeze
+
+# Add new classification layers
+model = models.Sequential([
+    base_model,
+    layers.Flatten(),
+    layers.Dense(256, activation='relu'),
+    layers.Dropout(0.5),
+    layers.Dense(26, activation='softmax')
+])
+
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.fit(train_ds, validation_data=test_ds, epochs=3)
+
+
+
+
+
+
+
+
+# 8_rnn_language_model.py
+import tensorflow as tf
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, SimpleRNN, Dense
+import numpy as np
+
+# Sample small text corpus
+corpus = [
+    "the sky is blue",
+    "the sun is bright",
+    "the sun in the sky is bright",
+    "we can see the shining sun"
+]
+
+# Tokenize words
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(corpus)
+total_words = len(tokenizer.word_index) + 1
+
+# Generate input sequences
+input_sequences = []
+for line in corpus:
+    token_list = tokenizer.texts_to_sequences([line])[0]
+    for i in range(1, len(token_list)):
+        n_gram = token_list[:i+1]
+        input_sequences.append(n_gram)
+
+# Pad sequences
+max_seq_len = max([len(x) for x in input_sequences])
+input_sequences = np.array(pad_sequences(input_sequences, maxlen=max_seq_len, padding='pre'))
+
+X, y = input_sequences[:,:-1], input_sequences[:,-1]
+y = tf.keras.utils.to_categorical(y, num_classes=total_words)
+
+# Build RNN model
+model = Sequential([
+    Embedding(total_words, 10, input_length=max_seq_len-1),
+    SimpleRNN(100),
+    Dense(total_words, activation='softmax')
+])
+
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+model.fit(X, y, epochs=500, verbose=0)
+
+print("Vocabulary:", tokenizer.word_index)
+
+
+
+
+
+
+# 9_rnn_char_model.py
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import SimpleRNN, Dense, Embedding
+
+text = "hello world"
+chars = sorted(list(set(text)))
+char_to_idx = {c:i for i,c in enumerate(chars)}
+idx_to_char = {i:c for c,i in char_to_idx.items()}
+
+seq_length = 3
+dataX, dataY = [], []
+for i in range(len(text) - seq_length):
+    seq_in = text[i:i+seq_length]
+    seq_out = text[i+seq_length]
+    dataX.append([char_to_idx[c] for c in seq_in])
+    dataY.append(char_to_idx[seq_out])
+
+X = np.array(dataX)
+y = tf.keras.utils.to_categorical(dataY, num_classes=len(chars))
+
+# Model
+model = Sequential([
+    Embedding(len(chars), 8, input_length=seq_length),
+    SimpleRNN(32),
+    Dense(len(chars), activation='softmax')
+])
+
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+model.fit(X, y, epochs=300, verbose=0)
+
+# Predict next char
+test_seq = "hel"
+x_test = np.array([[char_to_idx[c] for c in test_seq]])
+pred_idx = np.argmax(model.predict(x_test))
+print("Input:", test_seq, "→ Predicted next char:", idx_to_char[pred_idx])
+
+
+
+
+# 10_compare_rnn_lstm.py
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, SimpleRNN, LSTM, Dense
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+# Simple text corpus
+corpus = ["i love machine learning", "machine learning is fun", "deep learning uses neural networks"]
+
+# Tokenize
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(corpus)
+total_words = len(tokenizer.word_index) + 1
+
+# Create sequences
+input_sequences = []
+for line in corpus:
+    token_list = tokenizer.texts_to_sequences([line])[0]
+    for i in range(1, len(token_list)):
+        n_gram_seq = token_list[:i+1]
+        input_sequences.append(n_gram_seq)
+
+max_len = max([len(x) for x in input_sequences])
+input_sequences = np.array(pad_sequences(input_sequences, maxlen=max_len, padding='pre'))
+
+X, y = input_sequences[:,:-1], input_sequences[:,-1]
+y = tf.keras.utils.to_categorical(y, num_classes=total_words)
+
+# RNN Model
+rnn_model = Sequential([
+    Embedding(total_words, 8, input_length=max_len-1),
+    SimpleRNN(64),
+    Dense(total_words, activation='softmax')
+])
+rnn_model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+rnn_model.fit(X, y, epochs=200, verbose=0)
+
+# LSTM Model
+lstm_model = Sequential([
+    Embedding(total_words, 8, input_length=max_len-1),
+    LSTM(64),
+    Dense(total_words, activation='softmax')
+])
+lstm_model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+lstm_model.fit(X, y, epochs=200, verbose=0)
+
+print("RNN Accuracy:", rnn_model.evaluate(X, y, verbose=0)[1])
+print("LSTM Accuracy:", lstm_model.evaluate(X, y, verbose=0)[1])
+
+
+
+
+
+
+
+
+
+
+
+# 11_lstm_imdb_sentiment.py
+import tensorflow as tf
+from tensorflow.keras.datasets import imdb
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout
+
+# Load IMDB dataset
+num_words = 10000
+max_len = 200
+(x_train, y_train), (x_test, y_test) = imdb.load_data(num_words=num_words)
+
+x_train = pad_sequences(x_train, maxlen=max_len)
+x_test = pad_sequences(x_test, maxlen=max_len)
+
+# LSTM model
+model = Sequential([
+    Embedding(num_words, 64, input_length=max_len),
+    LSTM(64, dropout=0.3, recurrent_dropout=0.3),
+    Dense(1, activation='sigmoid')
+])
+
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model.fit(x_train, y_train, validation_split=0.2, epochs=2, batch_size=128, verbose=1)
+
+loss, acc = model.evaluate(x_test, y_test)
+print(f"Test Accuracy: {acc:.4f}")
+
+
+
+
+
+
+# 12_lstm_twitter_sentiment.py
+import tensorflow as tf
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout
+import numpy as np
+
+# Example small Twitter dataset
+tweets = [
+    "I love this phone",
+    "This movie is great",
+    "I hate waiting in line",
+    "The food was awful",
+    "Such a wonderful experience",
+    "I am so sad today"
+]
+labels = [1, 1, 0, 0, 1, 0]  # 1=positive, 0=negative
+
+# Tokenize
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(tweets)
+X = tokenizer.texts_to_sequences(tweets)
+X = pad_sequences(X, maxlen=6)
+y = np.array(labels)
+
+# Model
+vocab_size = len(tokenizer.word_index) + 1
+model = Sequential([
+    Embedding(vocab_size, 16, input_length=6),
+    LSTM(32, dropout=0.2, recurrent_dropout=0.2),
+    Dense(1, activation='sigmoid')
+])
+
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model.fit(X, y, epochs=15, verbose=0)
+
+print("Predictions:", np.round(model.predict(X).reshape(-1)))
+
+
+
+# 13_seq2seq_pos_tagging.py
+import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, LSTM, Dense, Embedding, TimeDistributed
+import numpy as np
+
+# Example small dataset
+sentences = [["I", "love", "dogs"], ["She", "hates", "cats"]]
+pos_tags = [["PRON", "VERB", "NOUN"], ["PRON", "VERB", "NOUN"]]
+
+# Create vocab
+word2idx = {"PAD":0}
+tag2idx = {"PAD":0}
+for s in sentences:
+    for w in s:
+        if w not in word2idx: word2idx[w] = len(word2idx)
+for tags in pos_tags:
+    for t in tags:
+        if t not in tag2idx: tag2idx[t] = len(tag2idx)
+
+# Encode
+X = [[word2idx[w] for w in s] for s in sentences]
+y = [[tag2idx[t] for t in s] for s in pos_tags]
+X = tf.keras.preprocessing.sequence.pad_sequences(X, maxlen=4, padding="post")
+y = tf.keras.preprocessing.sequence.pad_sequences(y, maxlen=4, padding="post")
+
+# Model
+vocab_size = len(word2idx)
+tag_size = len(tag2idx)
+
+inputs = Input(shape=(4,))
+x = Embedding(vocab_size, 8, mask_zero=True)(inputs)
+x = LSTM(16, return_sequences=True)(x)
+outputs = TimeDistributed(Dense(tag_size, activation='softmax'))(x)
+
+model = Model(inputs, outputs)
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.fit(X, np.expand_dims(y, -1), epochs=200, verbose=0)
+
+print("POS prediction for:", sentences[0])
+print(np.argmax(model.predict(np.array([X[0]])), axis=-1))
+
+
+
+
+# 14_seq2seq_pos_translation.py
+import tensorflow as tf
+import numpy as np
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, LSTM, Dense, Embedding
+
+# Simple dataset
+input_texts = ["I love dogs", "She eats fish"]
+target_texts = ["PRON VERB NOUN", "PRON VERB NOUN"]
+
+# Tokenize
+input_tokens = sorted(set(" ".join(input_texts).split()))
+target_tokens = sorted(set(" ".join(target_texts).split()))
+input_token_index = {word:i+1 for i,word in enumerate(input_tokens)}
+target_token_index = {word:i+1 for i,word in enumerate(target_tokens)}
+
+max_encoder_len = max([len(t.split()) for t in input_texts])
+max_decoder_len = max([len(t.split()) for t in target_texts])
+vocab_inp = len(input_token_index)+1
+vocab_tar = len(target_token_index)+1
+
+# Prepare data
+encoder_input = [[input_token_index[w] for w in t.split()] for t in input_texts]
+decoder_input = [[target_token_index[w] for w in t.split()] for t in target_texts]
+encoder_input = tf.keras.preprocessing.sequence.pad_sequences(encoder_input, maxlen=max_encoder_len)
+decoder_input = tf.keras.preprocessing.sequence.pad_sequences(decoder_input, maxlen=max_decoder_len)
+
+# Encoder
+enc_inputs = Input(shape=(None,))
+enc_emb = Embedding(vocab_inp, 16)(enc_inputs)
+enc_out, state_h, state_c = LSTM(32, return_state=True)(enc_emb)
+enc_states = [state_h, state_c]
+
+# Decoder
+dec_inputs = Input(shape=(None,))
+dec_emb = Embedding(vocab_tar, 16)(dec_inputs)
+dec_lstm = LSTM(32, return_sequences=True, return_state=False)
+dec_out = dec_lstm(dec_emb, initial_state=enc_states)
+dec_dense = Dense(vocab_tar, activation='softmax')
+dec_outputs = dec_dense(dec_out)
+
+model = Model([enc_inputs, dec_inputs], dec_outputs)
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
+model.fit([encoder_input, decoder_input], np.expand_dims(decoder_input, -1), epochs=300, verbose=0)
+print("Model trained on English → POS tagging (tiny demo).")
+
+
+
+
+
+# 15_encoder_decoder_translation.py
+import tensorflow as tf
+import numpy as np
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, LSTM, Embedding, Dense
+
+# Example tiny bilingual pairs
+english_sentences = ["how are you", "thank you", "good morning"]
+tamil_sentences = ["epadi iruke", "nandri", "kalai vanakkam"]
+
+# Tokenize
+eng_tokens = sorted(set(" ".join(english_sentences).split()))
+tam_tokens = sorted(set(" ".join(tamil_sentences).split()))
+
+eng_index = {w:i+1 for i,w in enumerate(eng_tokens)}
+tam_index = {w:i+1 for i,w in enumerate(tam_tokens)}
+
+X = [[eng_index[w] for w in s.split()] for s in english_sentences]
+y = [[tam_index[w] for w in s.split()] for s in tamil_sentences]
+X = tf.keras.preprocessing.sequence.pad_sequences(X, padding='post')
+y = tf.keras.preprocessing.sequence.pad_sequences(y, padding='post')
+
+# Model (Encoder–Decoder)
+enc_inputs = Input(shape=(None,))
+enc_emb = Embedding(len(eng_index)+1, 16)(enc_inputs)
+enc_out, state_h, state_c = LSTM(32, return_state=True)(enc_emb)
+enc_states = [state_h, state_c]
+
+dec_inputs = Input(shape=(None,))
+dec_emb = Embedding(len(tam_index)+1, 16)(dec_inputs)
+dec_lstm = LSTM(32, return_sequences=True)(dec_emb, initial_state=enc_states)
+dec_out = Dense(len(tam_index)+1, activation='softmax')(dec_lstm)
+
+model = Model([enc_inputs, dec_inputs], dec_out)
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
+model.fit([X, y], np.expand_dims(y, -1), epochs=300, verbose=0)
+print("Simple English → Tamil translation model trained (demo).")
+
+
+
+
+
+# 16_encoder_decoder_french.py
+import tensorflow as tf
+import numpy as np
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, LSTM, Dense, Embedding
+
+# Example parallel dataset
+english_sentences = ["i love you", "how are you", "good night"]
+french_sentences = ["je t'aime", "comment ça va", "bonne nuit"]
+
+# Tokenization
+eng_words = sorted(set(" ".join(english_sentences).split()))
+fre_words = sorted(set(" ".join(french_sentences).split()))
+eng_index = {w: i+1 for i, w in enumerate(eng_words)}
+fre_index = {w: i+1 for i, w in enumerate(fre_words)}
+
+X = [[eng_index[w] for w in s.split()] for s in english_sentences]
+y = [[fre_index[w] for w in s.split()] for s in french_sentences]
+X = tf.keras.preprocessing.sequence.pad_sequences(X, padding="post")
+y = tf.keras.preprocessing.sequence.pad_sequences(y, padding="post")
+
+# Encoder
+enc_inputs = Input(shape=(None,))
+enc_emb = Embedding(len(eng_index)+1, 32)(enc_inputs)
+enc_out, state_h, state_c = LSTM(64, return_state=True)(enc_emb)
+enc_states = [state_h, state_c]
+
+# Decoder
+dec_inputs = Input(shape=(None,))
+dec_emb = Embedding(len(fre_index)+1, 32)(dec_inputs)
+dec_lstm = LSTM(64, return_sequences=True)
+dec_out = dec_lstm(dec_emb, initial_state=enc_states)
+dec_dense = Dense(len(fre_index)+1, activation='softmax')
+dec_out_final = dec_dense(dec_out)
+
+# Compile and train
+model = Model([enc_inputs, dec_inputs], dec_out_final)
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
+model.fit([X, y], np.expand_dims(y, -1), epochs=300, verbose=0)
+
+print("Tiny English→French translation model trained (demo).")
+
+
+
+
+
+
+
+# 17_gan_image_augmentation.py
+import tensorflow as tf
+from tensorflow.keras import layers
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Load CIFAR-10 dataset (contains animals)
+(X_train, _), (_, _) = tf.keras.datasets.cifar10.load_data()
+X_train = X_train.astype("float32") / 255.0
+X_train = X_train[np.isin(_, [2, 3, 4, 5, 6])]  # select some animal classes (optional)
+
+latent_dim = 100
+
+# Generator
+generator = tf.keras.Sequential([
+    layers.Dense(8*8*256, input_dim=latent_dim),
+    layers.Reshape((8,8,256)),
+    layers.Conv2DTranspose(128, (4,4), strides=2, padding='same', activation='relu'),
+    layers.Conv2DTranspose(64, (4,4), strides=2, padding='same', activation='relu'),
+    layers.Conv2D(3, (3,3), padding='same', activation='sigmoid')
+])
+
+# Discriminator
+discriminator = tf.keras.Sequential([
+    layers.Conv2D(64, (3,3), strides=2, padding='same', input_shape=(32,32,3)),
+    layers.LeakyReLU(0.2),
+    layers.Conv2D(128, (3,3), strides=2, padding='same'),
+    layers.LeakyReLU(0.2),
+    layers.Flatten(),
+    layers.Dense(1, activation='sigmoid')
+])
+
+discriminator.compile(optimizer='adam', loss='binary_crossentropy')
+discriminator.trainable = False
+
+# Combined GAN
+z = tf.keras.Input(shape=(latent_dim,))
+img = generator(z)
+valid = discriminator(img)
+gan = tf.keras.Model(z, valid)
+gan.compile(optimizer='adam', loss='binary_crossentropy')
+
+# Train small sample
+batch_size = 64
+for epoch in range(3):
+    idx = np.random.randint(0, X_train.shape[0], batch_size)
+    real_imgs = X_train[idx]
+    noise = np.random.normal(0, 1, (batch_size, latent_dim))
+    gen_imgs = generator.predict(noise)
+
+    real_y = np.ones((batch_size, 1))
+    fake_y = np.zeros((batch_size, 1))
+    d_loss_real = discriminator.train_on_batch(real_imgs, real_y)
+    d_loss_fake = discriminator.train_on_batch(gen_imgs, fake_y)
+    noise = np.random.normal(0, 1, (batch_size, latent_dim))
+    g_loss = gan.train_on_batch(noise, np.ones((batch_size, 1)))
+
+    print(f"Epoch {epoch+1}, D loss: {(d_loss_real + d_loss_fake)/2:.4f}, G loss: {g_loss:.4f}")
+
+# Generate images
+noise = np.random.normal(0, 1, (5, latent_dim))
+gen_imgs = generator.predict(noise)
+plt.figure(figsize=(10,2))
+for i in range(5):
+    plt.subplot(1,5,i+1)
+    plt.imshow(gen_imgs[i])
+    plt.axis('off')
+plt.show()
+
+
+
+
+
+# 18_gan_medical_augmentation.py
+import tensorflow as tf
+from tensorflow.keras import layers
+import numpy as np
+
+# Placeholder for small grayscale medical dataset
+(X_train, _), _ = tf.keras.datasets.mnist.load_data()
+X_train = X_train / 255.0
+X_train = np.expand_dims(X_train, -1)
+
+latent_dim = 100
+
+# Generator
+generator = tf.keras.Sequential([
+    layers.Dense(7*7*128, input_dim=latent_dim),
+    layers.LeakyReLU(),
+    layers.Reshape((7,7,128)),
+    layers.Conv2DTranspose(64, (4,4), strides=2, padding='same', activation='relu'),
+    layers.Conv2DTranspose(1, (4,4), strides=2, padding='same', activation='sigmoid')
+])
+
+# Discriminator
+discriminator = tf.keras.Sequential([
+    layers.Conv2D(64, (3,3), strides=2, padding='same', input_shape=(28,28,1)),
+    layers.LeakyReLU(0.2),
+    layers.Flatten(),
+    layers.Dense(1, activation='sigmoid')
+])
+discriminator.compile(optimizer='adam', loss='binary_crossentropy')
+
+# Combine
+discriminator.trainable = False
+z = tf.keras.Input(shape=(latent_dim,))
+img = generator(z)
+validity = discriminator(img)
+gan = tf.keras.Model(z, validity)
+gan.compile(optimizer='adam', loss='binary_crossentropy')
+
+# Train (few iterations)
+for i in range(3):
+    idx = np.random.randint(0, X_train.shape[0], 64)
+    real = X_train[idx]
+    noise = np.random.normal(0, 1, (64, latent_dim))
+    fake = generator.predict(noise)
+    real_y = np.ones((64,1))
+    fake_y = np.zeros((64,1))
+    discriminator.train_on_batch(real, real_y)
+    discriminator.train_on_batch(fake, fake_y)
+    gan.train_on_batch(noise, np.ones((64,1)))
+    print(f"Epoch {i+1} complete.")
+
+
+
+
+
+
+
+# 19_fake_news_detection.py
+import tensorflow as tf
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout
+import numpy as np
+
+# Example text dataset
+texts = [
+    "Breaking news: aliens landed on earth",  # fake
+    "Government announces new education policy",  # real
+    "Doctors found cure for immortality",  # fake
+    "Prime minister launches new scheme",  # real
+]
+labels = [0, 1, 0, 1]  # 0=fake, 1=real
+
+# Tokenize
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(texts)
+X = tokenizer.texts_to_sequences(texts)
+X = pad_sequences(X, maxlen=8)
+y = np.array(labels)
+
+# Model
+vocab_size = len(tokenizer.word_index) + 1
+model = Sequential([
+    Embedding(vocab_size, 16, input_length=8),
+    LSTM(32, dropout=0.2),
+    Dense(1, activation='sigmoid')
+])
+
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model.fit(X, y, epochs=20, verbose=0)
+print("Predictions:", np.round(model.predict(X).reshape(-1)))
+
+
+
+
+
+# 20_hate_speech_detection.py
+import tensorflow as tf
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout
+import numpy as np
+
+# Small sample dataset
+tweets = [
+    "I hate you",
+    "You are awesome",
+    "This group is disgusting",
+    "What a lovely day",
+    "You idiot",
+    "Have a great weekend"
+]
+labels = [1, 0, 1, 0, 1, 0]  # 1=hate/offensive, 0=normal
+
+# Tokenization
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(tweets)
+X = tokenizer.texts_to_sequences(tweets)
+X = pad_sequences(X, maxlen=6)
+y = np.array(labels)
+
+# LSTM Model
+vocab_size = len(tokenizer.word_index) + 1
+model = Sequential([
+    Embedding(vocab_size, 16, input_length=6),
+    LSTM(32, dropout=0.3, recurrent_dropout=0.3),
+    Dense(1, activation='sigmoid')
+])
+
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model.fit(X, y, epochs=15, verbose=0)
+pred = np.round(model.predict(X).reshape(-1))
+
+print("Predictions:", pred)
