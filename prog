@@ -97,7 +97,7 @@ model.fit(train_data, epochs=3, validation_data=test_data)
 
 
 
-# 5_cnn_lfw.py
+# 5_cnn_face_recogw.py
 import tensorflow as tf
 from tensorflow.keras import layers, models
 import tensorflow_datasets as tfds
@@ -176,7 +176,7 @@ model.fit(train_data, validation_data=test_data, epochs=5)
 
 
 
-# 7_transfer_vgg16_emnist.py
+# 7_transfer_for_character_recog16_emnist.py
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from tensorflow.keras.applications import VGG16
@@ -271,7 +271,7 @@ print("Vocabulary:", tokenizer.word_index)
 
 
 
-# 9_rnn_char_model.py
+# 9_rnn_character_level_language_model.py
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
@@ -447,7 +447,7 @@ print("Predictions:", np.round(model.predict(X).reshape(-1)))
 
 
 
-# 13_seq2seq_pos_tagging.py
+# 13_seq2seq_partsofspeech_tagging.py
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Embedding, TimeDistributed
@@ -492,7 +492,7 @@ print(np.argmax(model.predict(np.array([X[0]])), axis=-1))
 
 
 
-# 14_seq2seq_pos_translation.py
+# 14_seq2seq_partsofspeech_translation.py
 import tensorflow as tf
 import numpy as np
 from tensorflow.keras.models import Model
